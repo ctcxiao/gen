@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="50dp">
+        <EditText
+            android:hint="经度"
+            android:id="@+id/et_longitude"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content" />
+
+        <EditText
+            android:hint="纬度"
+            android:id="@+id/et_latitude"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/btn_start"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:text="开启车库门自动判断"
+            />
+
+        <Button
+            android:id="@+id/btn_set_accuracy"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:text="设置精度"
+            />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btn_get_latlng"
+        android:layout_width="200dp"
+        android:layout_height="100dp"
+        android:text="开始定位"
+        android:layout_gravity="center_horizontal"
+        />
+
+    <TextView
+        android:id="@+id/tv_output"
+        android:layout_marginTop="20dp"
+        android:layout_width="200dp"
+        android:layout_height="50dp"
+        android:layout_gravity="center_horizontal"
+        />
+
+    <Button
+        android:id="@+id/btn_stop"
+        android:layout_width="200dp"
+        android:layout_height="100dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="20dp"
+        android:text="停止定位"
+        />
+</LinearLayout>
