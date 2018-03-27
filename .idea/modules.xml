@@ -3,7 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
-      <module fileurl="file://$PROJECT_DIR$/new_genfence.iml" filepath="$PROJECT_DIR$/new_genfence.iml" />
+      <module fileurl="file://$PROJECT_DIR$/gen.iml" filepath="$PROJECT_DIR$/gen.iml" />
+      <module fileurl="file://D:\workspace\genfence\gen\new_genfence.iml" filepath="D:\workspace\genfence\gen\new_genfence.iml" />
     </modules>
   </component>
 </project>

@@ -26,7 +26,6 @@ import com.amap.api.location.AMapLocation;
 import com.amap.api.location.AMapLocationClient;
 import com.amap.api.location.AMapLocationClientOption;
 import com.amap.api.location.AMapLocationListener;
-import com.amap.api.maps2d.AMapUtils;
 import com.example.danale.new_genfence.move_mode_detector.MoveModeDetector;
 import com.example.danale.new_genfence.move_trend_detector.GeofenceUtil;
 import com.example.danale.new_genfence.move_trend_detector.MoveTrendDetector;
@@ -40,7 +39,7 @@ import java.util.TimerTask;
 /**
  * Created by danale on 2018/3/21.
  */
-
+// TODO: 2018/3/28 省电优化，车载蓝牙判断，以及在家打开定位功能优化省电
 public class DetectActivity extends Activity implements View.OnClickListener {
     private static final int REQUEST_CODE_ACCESS_FINE_LOCATION = 200; // 请求定位权限
     private static final int LOCATION_FOR_GARAGER = 1; // 为获得车库门经纬度而定位
@@ -59,18 +58,84 @@ public class DetectActivity extends Activity implements View.OnClickListener {
 
     private String info;
 
+    private static final int LARGE_CIRCLE = 1000;
+    private static final int MIDDLE_CIRCLE = 200;
+    private static final int SMALL_CIRCLE = 20;
+
+    private static final int DRIVE_DETECT_CIRCLE = 100;
+
     private boolean openCmdHasSent = false;
     private boolean closeCmdHasSent = false;
 
     private int lastMoveMode;
     private long lastTime;
 
+    private boolean come_in_large_circle = true;
+    private boolean come_in_middle_circle = true;
+    private boolean come_in_small_circle = true;
+
+    private boolean coming_home = false;
+    private long curr_time;
+
+
     private Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
+
             if (msg.what == WHAT_RESULT) {
-                int moveModeResult = moveModeDetector.getMoveModeResult();
-                int moveTrendResult = moveTrendDetector.getMoveTrendResult();
+                int moveModeResult = 0;
+
+                if (!coming_home) {
+                    moveModeResult = moveModeDetector.getMoveModeResult();
+                } else {
+                    // TODO: 2018/3/27 change to DRIVE
+                    moveModeResult = MoveModeDetector.STEP;
+                }
+
+                Toast.makeText(DetectActivity.this, moveModeDetector.getAverageDistance()+"", Toast.LENGTH_SHORT).show();
+                //进入不同范围，使用不同的定位方式
+                if (moveModeDetector.getAverageDistance() > LARGE_CIRCLE){
+                    if (moveModeResult == MoveModeDetector.DRIVE ) {
+                        coming_home = false;
+                        if (come_in_large_circle) {
+                            changeLocationMode(1000 * 60 * 5, AMapLocationClientOption.AMapLocationMode.Battery_Saving);
+                            come_in_large_circle = false;
+                            come_in_middle_circle = true;
+                            come_in_small_circle = true;
+                        }
+                    }
+                } else if(moveModeResult == MoveModeDetector.DRIVE && moveModeDetector.getAverageDistance() > MIDDLE_CIRCLE){
+                    coming_home = false;
+                    if (come_in_middle_circle) {
+                        changeLocationMode(1000 * 30, AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
+                        come_in_middle_circle = false;
+                        come_in_small_circle = true;
+                        come_in_large_circle = true;
+                    }
+                } else if (moveModeResult == MoveModeDetector.DRIVE){
+                    if (come_in_small_circle) {
+                        changeLocationMode(1000, AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
+                        come_in_small_circle = false;
+                        come_in_large_circle = true;
+                        come_in_middle_circle =true;
+                    }
+                }
+                //如果是驾驶模式且离家在100米内，则认为之后会一直在驾车
+                // TODO: 2018/3/27 change to DRIVE
+                if (moveModeResult == MoveModeDetector.STEP && moveModeDetector.getAverageDistance() < DRIVE_DETECT_CIRCLE){
+                    //todo 此处可以进行定位停止操作等
+                    coming_home = true;
+                    //到家一分钟后降低定位精度和定位间隔，省电同时能防止从家门路过导致车库门打开的情况
+                    if (curr_time == 0L){
+                        curr_time = System.currentTimeMillis();
+                    }
+                    if (System.currentTimeMillis() - curr_time > 1000*60*2) {
+                        curr_time=0L;
+                    } else {
+                        return;
+                    }
+                }
+                curr_time = 0L;
 
                 /**
                  * 如果上一个模式是开车的话，且当前模式不是开车，开始计时30s
@@ -88,6 +153,8 @@ public class DetectActivity extends Activity implements View.OnClickListener {
                     }
                 }
                 lastTime = 0L;
+
+
 
                 StringBuilder sb = new StringBuilder(GeofenceUtil.formatTime(System.currentTimeMillis()));
                 sb.append("\n检测到出行方式：");
@@ -107,17 +174,11 @@ public class DetectActivity extends Activity implements View.OnClickListener {
                     lastMoveMode = MoveModeDetector.UNKNOWN;
                     sb.append("正在检测");
                 }
-                sb.append("\n检测到出行趋势：");
-                if (moveTrendResult == MoveTrendDetector.GO_HOME) {
-                    sb.append("回家");
-                } else if (moveTrendResult == MoveTrendDetector.LEAVE_HOME) {
-                    sb.append("离家");
-                } else if (moveTrendResult == MoveTrendDetector.UNKNOWN) {
-                    sb.append("正在检测");
-                }
+
                 sb.append("\n执行动作：");
-                if (moveModeResult == MoveModeDetector.DRIVE) {
-                    if (moveTrendResult == MoveTrendDetector.GO_HOME) {
+                // TODO: 2018/3/27 change to DRIVE
+                if (moveModeResult == MoveModeDetector.STEP) {
+                    if (moveModeDetector.getAverageDistance() < SMALL_CIRCLE) {
                         sb.append("发送开车库门的命令！");
                         tvOutput.setText(sb.toString());
                         if (!openCmdHasSent) {
@@ -125,16 +186,8 @@ public class DetectActivity extends Activity implements View.OnClickListener {
                             openCmdHasSent = true;
                             closeCmdHasSent = false;
                             moveTrendDetector.reset();
-                        }
-                        return;
-                    } else if (moveTrendResult == MoveTrendDetector.LEAVE_HOME) {
-                        sb.append("发送关车库门的命令！");
-                        tvOutput.setText(sb.toString());
-                        if (!closeCmdHasSent) {
-                            // new ActionPresenter(deviceId).controlGarageDoor(0);
-                            closeCmdHasSent = true;
-                            openCmdHasSent = false;
-                            moveTrendDetector.reset();
+                            coming_home = false;
+                            changeLocationMode(1000 * 60 * 10, AMapLocationClientOption.AMapLocationMode.Battery_Saving);
                         }
                         return;
                     }
@@ -276,11 +329,28 @@ public class DetectActivity extends Activity implements View.OnClickListener {
 
             //设置场景模式后最好调用一次stop，再调用start以保证场景模式生效
             mLocationClient.stopLocation();
+
             mLocationClient.setLocationListener(getLocationCallback());
             mLocationClient.setLocationOption(option);
             mLocationClient.startLocation();
         }
 
+    }
+
+    void changeLocationMode(int interval, AMapLocationClientOption.AMapLocationMode mode){
+        AMapLocationClientOption option = new AMapLocationClientOption();
+
+        option.setLocationMode(mode);
+        option.setInterval(interval);
+        option.setSensorEnable(true);
+        if (null != mLocationClient) {
+
+            //设置场景模式后最好调用一次stop，再调用start以保证场景模式生效
+            mLocationClient.stopLocation();
+            mLocationClient.setLocationListener(getLocationCallback());
+            mLocationClient.setLocationOption(option);
+            mLocationClient.startLocation();
+        }
     }
 
     /**
@@ -293,6 +363,7 @@ public class DetectActivity extends Activity implements View.OnClickListener {
     void startDetect() {
         moveModeDetector.startDetect();
         moveTrendDetector.setDestination(Double.parseDouble(etLongitude.getText().toString()), Double.parseDouble(etLatitude.getText().toString()));
+        moveModeDetector.setDestination(Double.parseDouble(etLongitude.getText().toString()), Double.parseDouble(etLatitude.getText().toString()));
     }
 
     void stopDetect() {
@@ -365,7 +436,7 @@ public class DetectActivity extends Activity implements View.OnClickListener {
             writeTimer.schedule(new TimerTask() {
                 @Override
                 public void run() {
-                 //   writeToFile(info);
+                    writeToFile(info);
                 }
             }, 30000L, 30000L);
         }

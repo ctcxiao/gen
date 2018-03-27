@@ -29,7 +29,7 @@ public class MoveModeDetector implements SensorEventListener {
     public static final int UNKNOWN = -1; // 未知（数据不够，无法检测出结果）
 
     public static final int RUN = 3;//跑步
-    private static final int SIZE = 3;
+    private static final int SIZE = 10;// TODO: 2018/3/26 数量到底取多少好
     private Location[] locations = new Location[SIZE];
     private int locationIndex = 0;
 
@@ -52,12 +52,25 @@ public class MoveModeDetector implements SensorEventListener {
     private int offset_drive;
     private int offset_step;
 
+    private Location destination;
+
     public MoveModeDetector(Context context) {
         stepDetectHelper = new StepDetectHelper(context);
         mContext = context;
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
     }
 
+    public void clearLocation()
+    {
+        locations = new Location[SIZE];
+    }
+    public void setDestination(double longitude, double latitude) {
+        if (destination == null) {
+            destination = new Location("");
+        }
+        destination.setLongitude(longitude);
+        destination.setLatitude(latitude);
+    }
     /**
      * 注册步行检测相关传感器
      */
@@ -80,11 +93,21 @@ public class MoveModeDetector implements SensorEventListener {
      * 收集实时定位得到的location
      */
     public boolean collectLocation(Location location) {
-       // if (location.getAccuracy() > 0 && location.getAccuracy() <= GeofenceUtil.GPS_ACCURACY_IN_METERS) {
+        if(location ==  null){
+            return false;
+        }
+        if (locationIndex == 0) {
+            locations[locationIndex++ % SIZE] = location;
+            return true;
+        } else {
+            Location last = locations[(locationIndex - 1) % SIZE];
+            if (GeofenceUtil.distance(location, last) <= 100) {
                 locations[locationIndex++ % SIZE] = location;
                 return true;
-      //  }
-       // return false;
+            }
+
+        }
+        return false;
     }
 
     /**
@@ -101,34 +124,29 @@ public class MoveModeDetector implements SensorEventListener {
      */
     public int getMoveModeResult() {
         if (locationIndex < SIZE) { // 取的点太少，无法判断
-            Toast.makeText(mContext, "1", Toast.LENGTH_SHORT).show();
             return UNKNOWN;
         } else {
             float averageSpeed = getAverageSpeed();
-            Toast.makeText(mContext, averageSpeed+":", Toast.LENGTH_SHORT).show();
             if (averageSpeed <= 0.8) {
                 return STILL;
-            } else if (averageSpeed >= 4) {
-                if (isDrive && getAverageDistance() >= 10.0f) {
+            } else if (averageSpeed >= 10) {
+                if (isDrive) {
                     return DRIVE;
                 } else if (isStep) {
                     return RUN;
                 } else {
-                    Toast.makeText(mContext, "2", Toast.LENGTH_SHORT).show();
                     return UNKNOWN;
                 }
             } else {
                 if (useWhichSensor == -1) {
-                    Toast.makeText(mContext, "3", Toast.LENGTH_SHORT).show();
                     return UNKNOWN;
                 } else {
                     int stepResult = getStepDetectResult();
                     if (stepResult == StepDetectHelper.IS_STEP) {
                         return STEP;
-                    } else if (stepResult == StepDetectHelper.NOT_STEP && getAverageDistance() >= 10.0f) {
+                    } else if (stepResult == StepDetectHelper.NOT_STEP) {
                         return DRIVE;
                     } else {
-                        Toast.makeText(mContext, averageSpeed+":4", Toast.LENGTH_SHORT).show();
                         return UNKNOWN;
                     }
                 }
@@ -143,25 +161,19 @@ public class MoveModeDetector implements SensorEventListener {
      */
     private float getAverageSpeed() {
         float speed = 0.0f;
-       // float distance = getAverageDistance();
 
         if (locationIndex > 0 && locationIndex <= SIZE) {
             for (int i = 0; i < locationIndex; i++) {
                 speed += locations[i].getSpeed();
             }
-//            long time = locations[locationIndex-1].getTime() - locations[0].getTime();
-//            //Toast.makeText(mContext, locationIndex+":"+locations[locationIndex-1].getTime()+":"+locations[0].getTime()+":"+distance, Toast.LENGTH_SHORT).show();
-//            speed = distance/time*1000;
+
             speed /= locationIndex;
         } else if (locationIndex > SIZE) {
             for (int i = 0; i < SIZE; i++) {
                 speed += locations[i].getSpeed();
             }
             speed /= SIZE;
-            DetectActivity.writeToFile(locationIndex+":"+locations[SIZE-2].getTime()+":"+locations[0].getTime()+":"+speed);
-//            long time = locations[SIZE-2].getTime() - locations[0].getTime();
-           // Toast.makeText(mContext, locationIndex+":"+locations[SIZE-2].getTime()+":"+locations[0].getTime()+":"+speed, Toast.LENGTH_SHORT).show();
-//            speed = distance/time*1000;
+
         }
 
         return speed;
@@ -170,16 +182,20 @@ public class MoveModeDetector implements SensorEventListener {
      * 计算locations数组中所有有效location距离目标的平均距离（单位：m）
      * @return 平均距离
      */
-    private float getAverageDistance() {
+    public float getAverageDistance() {
         float distance = 0.0f;
-        if (locationIndex > 0 && locationIndex < SIZE) {
-            distance+= AMapUtils.calculateLineDistance(new LatLng(locations[0].getLatitude(), locations[0].getLongitude()),
-                    new LatLng(locations[locationIndex-1].getLatitude(), locations[locationIndex-1].getLongitude()));
-        } else if (locationIndex >= SIZE) {
-            distance+= AMapUtils.calculateLineDistance(new LatLng(locations[0].getLatitude(), locations[0].getLongitude()),
-                    new LatLng(locations[SIZE-2].getLatitude(), locations[SIZE-2].getLongitude()));
+        if (locationIndex > 0 && locationIndex <= SIZE) {
+            for (int i = 0; i < locationIndex; i++) {
+                distance += GeofenceUtil.distance(locations[i], destination);
+            }
+            distance /= locationIndex;
+        } else if (locationIndex > SIZE) {
+            for (int i = 0; i < SIZE; i++) {
+                distance += GeofenceUtil.distance(locations[i], destination);
+            }
+            distance /= SIZE;
         }
-       // Toast.makeText(mContext,"averDistance:"+distance, Toast.LENGTH_SHORT).show();
+
         System.out.println("averDistance:"+distance);
         return distance;
     }
@@ -240,40 +256,42 @@ public class MoveModeDetector implements SensorEventListener {
             if (x == 0.0 && y == 0.0 && z == 0.0) {
                 // TODO: 2018/3/22
             } else {
-
+                //计算x,y,z轴上加速度变化量
                 float x_change = Math.abs(x - sensorEvent.values[0]);
                 float y_change = Math.abs(y - sensorEvent.values[1]);
                 float z_change = Math.abs(z - sensorEvent.values[2]);
-
+                //如果加速度变化量超过1.0，则进入跑步判断
                 if (x_change >= 1.0 || y_change >= 1.0 || z_change >= 1.0) {
+                    //todo 如果DetectActivity中设置了驾车转其他状态的判断，则这个判断不是必须
+//                    if (isDrive) {//上个模式是驾驶的话，进行驾车偏差计算，过滤掉驾车计时的噪音
+//                        offset_drive++; //驾车偏差数(减小偶然抖动对计时的影响，如果不设置则会导致在进入驾驶判断的3s内任意一次大的抖动都会导致计时重置而进入跑步判断)，小于10次则驾车计时不清零,大于10次则开始计时0.5秒进入跑步模式
+//                        if (offset_drive >= 10) {
+//
+//                            offset_drive = 0;
+//                            firstComeInDrive = 0;
+//                            if (firstComeInStep == 0) {
+//                                firstComeInStep = System.currentTimeMillis();
+//                            }
+//                            if (System.currentTimeMillis() - firstComeInStep > 500L) {
+//                                isStep = true;
+//                                isDrive = false;
+//                            }
+//                        }
+//                    } else {
 
-                    if (isDrive) {//上个模式是驾驶的话，进行驾车偏差计算，过滤掉驾车计时的噪音
-                        offset_drive++; //驾车偏差数，小于10次则驾车计时不清零,大于10次则开始计时0.5秒进入跑步模式
-                        if (offset_drive >= 10) {
-                           // Toast.makeText(mContext, x_change + ":" + y_change + ":" + z_change + "isstep", Toast.LENGTH_SHORT).show();
-                            offset_drive = 0;
-                            firstComeInDrive = 0;
-                            if (firstComeInStep == 0) {
-                                firstComeInStep = System.currentTimeMillis();
-                            }
-                            if (System.currentTimeMillis() - firstComeInStep > 500L) {
-                                isStep = true;
-                                isDrive = false;
-                            }
-                        }
-                    } else {
-                      //  Toast.makeText(mContext, x_change + ":" + y_change + ":" + z_change + "isstep1", Toast.LENGTH_SHORT).show();
                         firstComeInDrive = 0;
-                        offset_drive=0;
+                        offset_step=0;
+                        //开始计时
                         if (firstComeInStep == 0) {
                             firstComeInStep = System.currentTimeMillis();
                         }
+                        //如果状态维持0.5s以上，则判断为跑步
                         if (System.currentTimeMillis() - firstComeInStep > 500L) {
                             isStep = true;
                             isDrive = false;
                         }
-                    }
-                } else {
+                  //  }
+                } else {//否则进入驾车模式判断
 
                     if (isStep) {//上个模式是跑步的话，则进行步行偏差计算，过滤掉步行计时噪音
                         offset_step++;//步行偏差数，小于10次则步行计时不清零，大于十次则开始计时3秒进入驾车模式
@@ -292,10 +310,12 @@ public class MoveModeDetector implements SensorEventListener {
                         }
                     } else {
                         firstComeInStep = 0;
-                        offset_step = 0;
+                        offset_drive = 0;
+                        //开始计时
                         if (firstComeInDrive == 0) {
                             firstComeInDrive = System.currentTimeMillis();
                         }
+                        //如果状态维持3s以上，则判断为驾车
                         if (System.currentTimeMillis() - firstComeInDrive > 3000L) {
                             isDrive = true;
                             isStep = false;

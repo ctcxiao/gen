@@ -49,8 +49,8 @@ public class MoveTrendDetector {
 
     public void reset() {
         locationIndex = 0;
-        across20MetersTime = 0L;
         across50MetersTime = 0L;
+        across200MetersTime = 0L;
     }
 
     /**
@@ -72,8 +72,8 @@ public class MoveTrendDetector {
         return false;
     }
 
-    private long across50MetersTime = 0L; // 跨越50m的时刻
-    private long across20MetersTime = 0L; // 跨越20m的时刻
+    private long across200MetersTime = 0L; // 跨越50m的时刻
+    private long across50MetersTime = 0L; // 跨越20m的时刻
 
     /**
      * 获得移动趋势的检测结果
@@ -90,22 +90,23 @@ public class MoveTrendDetector {
             return UNKNOWN;
         } else {
             float averageDistance = getAverageDistance();
-            if (averageDistance <= 20) {
-                if (across20MetersTime == 0L) {
-                    across20MetersTime = System.currentTimeMillis();
-                }
-            } else if (averageDistance >= 50 && averageDistance <= 100) {
+            Toast.makeText(mContext, averageDistance+"", Toast.LENGTH_SHORT).show();
+            if (averageDistance <= 50) {
                 if (across50MetersTime == 0L) {
                     across50MetersTime = System.currentTimeMillis();
+                }
+            } else if (averageDistance >= 200 && averageDistance <= 500) {
+                if (across200MetersTime == 0L) {
+                    across200MetersTime = System.currentTimeMillis();
                 }
             } else {
                 return UNKNOWN;
             }
 
-            if (across20MetersTime != 0L && across50MetersTime != 0L) {
-                if (across20MetersTime < across50MetersTime) {
+            if (across50MetersTime != 0L && across200MetersTime != 0L) {
+                if (across50MetersTime < across200MetersTime) {
                     return LEAVE_HOME;
-                } else if (across20MetersTime > across50MetersTime) {
+                } else if (across50MetersTime > across200MetersTime) {
                     return GO_HOME;
                 } else {
                     return UNKNOWN;
