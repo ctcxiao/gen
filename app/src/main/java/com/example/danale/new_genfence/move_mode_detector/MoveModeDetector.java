@@ -159,7 +159,7 @@ public class MoveModeDetector implements SensorEventListener {
      *
      * @return 平均速度
      */
-    private float getAverageSpeed() {
+    public float getAverageSpeed() {
         float speed = 0.0f;
 
         if (locationIndex > 0 && locationIndex <= SIZE) {
